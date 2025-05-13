@@ -53,7 +53,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select * from lineitem2 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'\n" +
                 "intersect\n" +
                 "select * from lineitem3 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'";
-        runFileUnitTestHelper(sql, "scheduler/colocate/intersect_q1");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/intersect_q1");
     }
 
     @Test
@@ -78,7 +78,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select L_ORDERKEY, sum(L_QUANTITY_SUM)\n" +
                 "from cte\n" +
                 "group by L_ORDERKEY;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/intersect_q2");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/intersect_q2");
     }
 
     @Test
@@ -103,7 +103,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select L_ORDERKEY, L_PARTKEY, sum(L_QUANTITY_SUM)\n" +
                 "from cte\n" +
                 "group by L_ORDERKEY,L_PARTKEY;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/intersect_q3");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/intersect_q3");
     }
 
     @Test
@@ -128,7 +128,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select L_PARTKEY, sum(L_QUANTITY_SUM)\n" +
                 "from cte\n" +
                 "group by L_PARTKEY;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/intersect_q4");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/intersect_q4");
     }
 
     @Test
@@ -146,7 +146,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "from cte \n" +
                 "     inner join [bucket] orders on L_ORDERKEY = O_ORDERKEY\n" +
                 "     inner join [broadcast] part on L_PARTKEY = P_PARTKEY;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/intersect_q5");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/intersect_q5");
     }
 
     @Test
@@ -158,7 +158,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select * from lineitem2 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'\n" +
                 "except\n" +
                 "select * from lineitem3 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'";
-        runFileUnitTestHelper(sql, "scheduler/colocate/except_q1");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/except_q1");
     }
 
     @Test
@@ -176,7 +176,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "from cte\n" +
                 "group by L_ORDERKEY;\n";
         System.out.println(sql);
-        runFileUnitTestHelper(sql, "scheduler/colocate/except_q2");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/except_q2");
     }
 
     @Test
@@ -193,7 +193,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select L_ORDERKEY, L_PARTKEY, sum(L_QUANTITY)\n" +
                 "from cte\n" +
                 "group by L_ORDERKEY, L_PARTKEY;\n";
-        runFileUnitTestHelper(sql, "scheduler/colocate/except_q3");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/except_q3");
     }
 
     @Test
@@ -210,7 +210,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select L_PARTKEY, sum(L_QUANTITY)\n" +
                 "from cte\n" +
                 "group by L_PARTKEY;\n";
-        runFileUnitTestHelper(sql, "scheduler/colocate/except_q4");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/except_q4");
     }
 
     @Test
@@ -222,7 +222,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select * from lineitem2 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'\n" +
                 "union\n" +
                 "select * from lineitem3 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q1");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q1");
     }
 
     @Test
@@ -230,7 +230,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
         String sql = "select * from lineitem0 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'\n" +
                 "union\n" +
                 "select * from lineitem1 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q2");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q2");
     }
 
     @Test
@@ -242,7 +242,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "select * from lineitem2 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'\n" +
                 "union all\n" +
                 "select * from lineitem3 where L_SHIPDATE between '1993-01-01' AND '1993-12-31'";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q3");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q3");
     }
 
     @Test
@@ -261,7 +261,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "where L_SHIPDATE between '1993-01-01' AND '1993-12-31' \n" +
                 ")\n" +
                 "select * from cte;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q4");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q4");
     }
 
     @Test
@@ -280,7 +280,7 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "where L_SHIPDATE between '1993-01-01' AND '1993-12-31' \n" +
                 ")\n" +
                 "select * from cte;";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q5");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q5");
     }
 
     @Test
@@ -298,6 +298,6 @@ public class SchedulerColocateSetTest extends SchedulerTestBase {
                 "from cte \n" +
                 "     inner join [bucket] orders on L_ORDERKEY = O_ORDERKEY\n" +
                 "     inner join [broadcast] part on L_PARTKEY = P_PARTKEY; ";
-        runFileUnitTestHelper(sql, "scheduler/colocate/union_q6");
+        runFileUnitTestHelper(sql, "scheduler/colocate_set/union_q6");
     }
 }

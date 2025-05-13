@@ -14,14 +14,14 @@ PLAN FRAGMENT 1(F02)
       BE: 10001
       SCAN RANGES
         BUCKET SEQUENCES: [16, 1, 4, 7, 10, 13]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1400
           2. partitionID=1397,tabletID=1406
           3. partitionID=1397,tabletID=1412
           4. partitionID=1397,tabletID=1418
           5. partitionID=1397,tabletID=1424
           6. partitionID=1397,tabletID=1430
-        1:OlapScanNode
+        2:OlapScanNode
           1. partitionID=1665,tabletID=1668
           2. partitionID=1665,tabletID=1674
           3. partitionID=1665,tabletID=1680
@@ -33,14 +33,14 @@ PLAN FRAGMENT 1(F02)
       BE: 10002
       SCAN RANGES
         BUCKET SEQUENCES: [17, 2, 5, 8, 11, 14]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1402
           2. partitionID=1397,tabletID=1408
           3. partitionID=1397,tabletID=1414
           4. partitionID=1397,tabletID=1420
           5. partitionID=1397,tabletID=1426
           6. partitionID=1397,tabletID=1432
-        1:OlapScanNode
+        2:OlapScanNode
           1. partitionID=1665,tabletID=1670
           2. partitionID=1665,tabletID=1676
           3. partitionID=1665,tabletID=1682
@@ -52,14 +52,14 @@ PLAN FRAGMENT 1(F02)
       BE: 10003
       SCAN RANGES
         BUCKET SEQUENCES: [0, 3, 6, 9, 12, 15]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1398
           2. partitionID=1397,tabletID=1404
           3. partitionID=1397,tabletID=1410
           4. partitionID=1397,tabletID=1416
           5. partitionID=1397,tabletID=1422
           6. partitionID=1397,tabletID=1428
-        1:OlapScanNode
+        2:OlapScanNode
           1. partitionID=1665,tabletID=1666
           2. partitionID=1665,tabletID=1672
           3. partitionID=1665,tabletID=1678
@@ -87,9 +87,9 @@ PLAN FRAGMENT 1
   3:AGGREGATE (update finalize)
   |  group by: 35: L_ORDERKEY, 36: L_PARTKEY, 37: L_SUPPKEY, 38: L_LINENUMBER, 39: L_QUANTITY, 40: L_EXTENDEDPRICE, 41: L_DISCOUNT, 42: L_TAX, 43: L_RETURNFLAG, 44: L_LINESTATUS, 45: L_SHIPDATE, 46: L_COMMITDATE, 47: L_RECEIPTDATE, 48: L_SHIPINSTRUCT, 49: L_SHIPMODE, 50: L_COMMENT, 51: PAD
   |  
-  2:UNION
+  0:UNION
   |  
-  |----1:OlapScanNode
+  |----2:OlapScanNode
   |       TABLE: lineitem1
   |       PREAGGREGATION: ON
   |       partitions=1/7
@@ -99,7 +99,7 @@ PLAN FRAGMENT 1
   |       cardinality=1
   |       avgRowSize=17.0
   |    
-  0:OlapScanNode
+  1:OlapScanNode
      TABLE: lineitem0
      PREAGGREGATION: ON
      partitions=1/7

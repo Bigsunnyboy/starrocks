@@ -3145,18 +3145,6 @@ public class PlanFragmentBuilder {
         }
 
         private PlanFragment buildSetOperation(OptExpression optExpr, ExecPlan context, OperatorType operatorType) {
-
-            List<PlanFragment> inputFragments = Lists.newArrayListWithCapacity(optExpr.arity());
-            List<ExecGroup> inputExecGroups = Lists.newArrayListWithCapacity(optExpr.arity());
-            for (int i = 0; i < optExpr.arity(); ++i) {
-                PlanFragment inputFragment = visit(optExpr.inputAt(i), context);
-                inputFragment.getPlanRoot().forceCollectExecStats();
-                ExecGroup inputExecGroup = currentExecGroup;
-                currentExecGroup = execGroups.newExecGroup();
-                inputFragments.add(inputFragment);
-                inputExecGroups.add(inputExecGroup);
-            }
-
             PhysicalSetOperation setOperation = (PhysicalSetOperation) optExpr.getOp();
             TupleDescriptor setOperationTuple = context.getDescTbl().createTupleDescriptor();
 
@@ -3180,6 +3168,17 @@ public class PlanFragmentBuilder {
                 setOperationNode = new IntersectNode(context.getNextNodeId(), setOperationTuple.getId());
             } else {
                 throw new StarRocksPlannerException("Unsupported set operation", INTERNAL_ERROR);
+            }
+
+            List<PlanFragment> inputFragments = Lists.newArrayListWithCapacity(optExpr.arity());
+            List<ExecGroup> inputExecGroups = Lists.newArrayListWithCapacity(optExpr.arity());
+            for (int i = 0; i < optExpr.arity(); ++i) {
+                PlanFragment inputFragment = visit(optExpr.inputAt(i), context);
+                inputFragment.getPlanRoot().forceCollectExecStats();
+                ExecGroup inputExecGroup = currentExecGroup;
+                currentExecGroup = execGroups.newExecGroup();
+                inputFragments.add(inputFragment);
+                inputExecGroups.add(inputExecGroup);
             }
 
             List<List<Expr>> materializedResultExprLists = Lists.newArrayList();
@@ -3257,6 +3256,7 @@ public class PlanFragmentBuilder {
                     }
                 } else {
                     execGroup.merge(inputExecGroup);
+                    execGroups.remove(inputExecGroup);
                 }
             }
 
@@ -3269,7 +3269,6 @@ public class PlanFragmentBuilder {
                 execGroup.setColocateGroup();
             } else {
                 execGroup.disableColocateGroup(setOperationNode);
-                execGroups.remove(execGroup);
             }
             currentExecGroup = execGroup;
             return setOperationFragment;

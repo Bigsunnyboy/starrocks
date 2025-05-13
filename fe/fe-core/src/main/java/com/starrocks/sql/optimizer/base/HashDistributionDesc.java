@@ -39,9 +39,7 @@ public class HashDistributionDesc {
         // e.g. required SHUFFLE_JOIN(a, b, c), child SHUFFLE_JOIN(a, b, c), satisfy
         SHUFFLE_JOIN, // hash property from shuffle join
         BUCKET, // hash property from bucket
-        SHUFFLE_ENFORCE, // parent node which can not satisfy the requirement will enforce child this hash property
-        SHUFFLE_SET, // hash property from set operator
-        COLOCATE_SET
+        SHUFFLE_ENFORCE // parent node which can not satisfy the requirement will enforce child this hash property
     }
 
     private List<DistributionCol> distributionCols;
@@ -86,9 +84,6 @@ public class HashDistributionDesc {
 
         if (this.sourceType == SourceType.SHUFFLE_AGG && item.sourceType == SourceType.SHUFFLE_JOIN) {
             return distributionColsEquals(item.distributionCols);
-        } else if ((this.sourceType == SourceType.COLOCATE_SET || this.sourceType == SourceType.SHUFFLE_SET) &&
-                (item.sourceType == SourceType.SHUFFLE_AGG || item.sourceType == SourceType.SHUFFLE_JOIN)) {
-            return distributionColsContainsAll(item.distributionCols);
         } else if (this.sourceType == SourceType.SHUFFLE_JOIN && (item.sourceType == SourceType.SHUFFLE_AGG ||
                 item.sourceType == SourceType.SHUFFLE_JOIN)) {
             return distributionColsContainsAll(item.distributionCols);
@@ -137,7 +132,7 @@ public class HashDistributionDesc {
 
 
     public boolean isLocal() {
-        return this.sourceType == SourceType.LOCAL || this.sourceType == SourceType.COLOCATE_SET;
+        return this.sourceType == SourceType.LOCAL;
     }
 
     public boolean isShuffle() {

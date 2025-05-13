@@ -33,7 +33,6 @@ import com.starrocks.sql.optimizer.base.EquivalentDescriptor;
 import com.starrocks.sql.optimizer.base.HashDistributionDesc;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
 import com.starrocks.sql.optimizer.base.PhysicalPropertySet;
-import com.starrocks.sql.optimizer.base.RoundRobinDistributionSpec;
 import com.starrocks.sql.optimizer.base.SortProperty;
 import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.Projection;
@@ -79,10 +78,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkState;
-import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.COLOCATE_SET;
+import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.LOCAL;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_AGG;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_JOIN;
-import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_SET;
 
 // The output property of the node is calculated according to the attributes of the child node and itself.
 // Currently join node enforces a valid property for the child node that cannot meet the requirements.
@@ -233,7 +231,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
         DistributionSpec inputDistSpec = childrenOutputProperties.get(0).getDistributionProperty().getSpec();
         if (inputDistSpec.getType().equals(DistributionSpec.DistributionType.ROUND_ROBIN)) {
             PhysicalPropertySet propertySet =
-                    new PhysicalPropertySet(DistributionProperty.createProperty(new RoundRobinDistributionSpec()));
+                    new PhysicalPropertySet(EmptyDistributionProperty.INSTANCE);
             return mergeCTEProperty(propertySet);
         }
 
@@ -269,10 +267,19 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
                     .map(cols -> cols.get(0).getColId())
                     .collect(Collectors.toList());
 
-            HashDistributionDesc hashDistDesc = new HashDistributionDesc(columnIds, COLOCATE_SET);
-            HashDistributionSpec hashDistSpec = DistributionSpec.createHashDistributionSpec(hashDistDesc);
-            outputShuffleColumns.forEach(shuffleCols -> shuffleCols.stream().skip(1).forEach(shuffleCol ->
-                    hashDistSpec.getEquivDesc().unionDistributionCols(shuffleCols.get(0), shuffleCol)));
+            HashDistributionDesc hashDistDesc = new HashDistributionDesc(columnIds, LOCAL);
+            EquivalentDescriptor equivalentDescriptor = new EquivalentDescriptor(
+                    inputHashDistSpec.getEquivDesc().getTableId(), inputHashDistSpec.getEquivDesc().getPartitionIds());
+
+            List<DistributionCol> shuffleColumns = outputShuffleColumns.stream()
+                    .map(cols -> cols.get(0))
+                    .collect(Collectors.toList());
+
+            equivalentDescriptor.initDistributionUnionFind(shuffleColumns);
+            outputShuffleColumns.forEach(columns -> columns.stream().skip(1)
+                    .forEach(col -> equivalentDescriptor.unionDistributionCols(columns.get(0), col)));
+
+            HashDistributionSpec hashDistSpec = new HashDistributionSpec(hashDistDesc, equivalentDescriptor);
             PhysicalPropertySet propertySet =
                     new PhysicalPropertySet(DistributionProperty.createProperty(hashDistSpec));
             return mergeCTEProperty(propertySet);
@@ -280,7 +287,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
             List<Integer> columnIds = node.getOutputColumnRefOp().stream()
                     .map(ColumnRefOperator::getId)
                     .collect(Collectors.toList());
-            HashDistributionDesc hashDistDesc = new HashDistributionDesc(columnIds, SHUFFLE_SET);
+            HashDistributionDesc hashDistDesc = new HashDistributionDesc(columnIds, SHUFFLE_JOIN);
             HashDistributionSpec hashDistSpec = DistributionSpec.createHashDistributionSpec(hashDistDesc);
             PhysicalPropertySet propertySet =
                     new PhysicalPropertySet(DistributionProperty.createProperty(hashDistSpec));

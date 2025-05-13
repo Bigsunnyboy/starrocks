@@ -40,7 +40,7 @@ PLAN FRAGMENT 3(F06)
       BE: 10001
       SCAN RANGES
         BUCKET SEQUENCES: [16, 1, 4, 7, 10, 13]
-        12:OlapScanNode
+        13:OlapScanNode
           1. partitionID=2202,tabletID=2205
           2. partitionID=2202,tabletID=2211
           3. partitionID=2202,tabletID=2217
@@ -52,7 +52,7 @@ PLAN FRAGMENT 3(F06)
       BE: 10002
       SCAN RANGES
         BUCKET SEQUENCES: [17, 2, 5, 8, 11, 14]
-        12:OlapScanNode
+        13:OlapScanNode
           1. partitionID=2202,tabletID=2207
           2. partitionID=2202,tabletID=2213
           3. partitionID=2202,tabletID=2219
@@ -64,7 +64,7 @@ PLAN FRAGMENT 3(F06)
       BE: 10003
       SCAN RANGES
         BUCKET SEQUENCES: [0, 3, 6, 9, 12, 15]
-        12:OlapScanNode
+        13:OlapScanNode
           1. partitionID=2202,tabletID=2203
           2. partitionID=2202,tabletID=2209
           3. partitionID=2202,tabletID=2215
@@ -80,7 +80,7 @@ PLAN FRAGMENT 4(F04)
       BE: 10001
       SCAN RANGES
         BUCKET SEQUENCES: [16, 1, 4, 7, 10, 13]
-        8:OlapScanNode
+        9:OlapScanNode
           1. partitionID=1934,tabletID=1937
           2. partitionID=1934,tabletID=1943
           3. partitionID=1934,tabletID=1949
@@ -92,7 +92,7 @@ PLAN FRAGMENT 4(F04)
       BE: 10002
       SCAN RANGES
         BUCKET SEQUENCES: [17, 2, 5, 8, 11, 14]
-        8:OlapScanNode
+        9:OlapScanNode
           1. partitionID=1934,tabletID=1939
           2. partitionID=1934,tabletID=1945
           3. partitionID=1934,tabletID=1951
@@ -104,7 +104,7 @@ PLAN FRAGMENT 4(F04)
       BE: 10003
       SCAN RANGES
         BUCKET SEQUENCES: [0, 3, 6, 9, 12, 15]
-        8:OlapScanNode
+        9:OlapScanNode
           1. partitionID=1934,tabletID=1935
           2. partitionID=1934,tabletID=1941
           3. partitionID=1934,tabletID=1947
@@ -120,7 +120,7 @@ PLAN FRAGMENT 5(F02)
       BE: 10001
       SCAN RANGES
         BUCKET SEQUENCES: [16, 1, 4, 7, 10, 13]
-        4:OlapScanNode
+        5:OlapScanNode
           1. partitionID=1665,tabletID=1668
           2. partitionID=1665,tabletID=1674
           3. partitionID=1665,tabletID=1680
@@ -132,7 +132,7 @@ PLAN FRAGMENT 5(F02)
       BE: 10002
       SCAN RANGES
         BUCKET SEQUENCES: [17, 2, 5, 8, 11, 14]
-        4:OlapScanNode
+        5:OlapScanNode
           1. partitionID=1665,tabletID=1670
           2. partitionID=1665,tabletID=1676
           3. partitionID=1665,tabletID=1682
@@ -144,7 +144,7 @@ PLAN FRAGMENT 5(F02)
       BE: 10003
       SCAN RANGES
         BUCKET SEQUENCES: [0, 3, 6, 9, 12, 15]
-        4:OlapScanNode
+        5:OlapScanNode
           1. partitionID=1665,tabletID=1666
           2. partitionID=1665,tabletID=1672
           3. partitionID=1665,tabletID=1678
@@ -160,7 +160,7 @@ PLAN FRAGMENT 6(F00)
       BE: 10001
       SCAN RANGES
         BUCKET SEQUENCES: [16, 1, 4, 7, 10, 13]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1400
           2. partitionID=1397,tabletID=1406
           3. partitionID=1397,tabletID=1412
@@ -172,7 +172,7 @@ PLAN FRAGMENT 6(F00)
       BE: 10002
       SCAN RANGES
         BUCKET SEQUENCES: [17, 2, 5, 8, 11, 14]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1402
           2. partitionID=1397,tabletID=1408
           3. partitionID=1397,tabletID=1414
@@ -184,7 +184,7 @@ PLAN FRAGMENT 6(F00)
       BE: 10003
       SCAN RANGES
         BUCKET SEQUENCES: [0, 3, 6, 9, 12, 15]
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1398
           2. partitionID=1397,tabletID=1404
           3. partitionID=1397,tabletID=1410
@@ -228,33 +228,33 @@ PLAN FRAGMENT 2
   |  output: sum(74: sum)
   |  group by: 73: L_ORDERKEY
   |  
-  16:INTERSECT
+  0:INTERSECT
   |  
-  |----7:EXCHANGE
+  |----8:EXCHANGE
   |    
-  |----11:EXCHANGE
+  |----12:EXCHANGE
   |    
-  |----15:EXCHANGE
+  |----16:EXCHANGE
   |    
-  3:EXCHANGE
+  4:EXCHANGE
 
 PLAN FRAGMENT 3
  OUTPUT EXPRS:
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 15
+    EXCHANGE ID: 16
     HASH_PARTITIONED: 55: L_ORDERKEY, 72: sum
 
-  14:AGGREGATE (update finalize)
+  15:AGGREGATE (update finalize)
   |  output: sum(59: L_QUANTITY)
   |  group by: 55: L_ORDERKEY
   |  
-  13:Project
+  14:Project
   |  <slot 55> : 55: L_ORDERKEY
   |  <slot 59> : 59: L_QUANTITY
   |  
-  12:OlapScanNode
+  13:OlapScanNode
      TABLE: lineitem3
      PREAGGREGATION: ON
      partitions=1/7
@@ -269,18 +269,18 @@ PLAN FRAGMENT 4
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 11
+    EXCHANGE ID: 12
     HASH_PARTITIONED: 37: L_ORDERKEY, 54: sum
 
-  10:AGGREGATE (update finalize)
+  11:AGGREGATE (update finalize)
   |  output: sum(41: L_QUANTITY)
   |  group by: 37: L_ORDERKEY
   |  
-  9:Project
+  10:Project
   |  <slot 37> : 37: L_ORDERKEY
   |  <slot 41> : 41: L_QUANTITY
   |  
-  8:OlapScanNode
+  9:OlapScanNode
      TABLE: lineitem2
      PREAGGREGATION: ON
      partitions=1/7
@@ -295,18 +295,18 @@ PLAN FRAGMENT 5
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 07
+    EXCHANGE ID: 08
     HASH_PARTITIONED: 19: L_ORDERKEY, 36: sum
 
-  6:AGGREGATE (update finalize)
+  7:AGGREGATE (update finalize)
   |  output: sum(23: L_QUANTITY)
   |  group by: 19: L_ORDERKEY
   |  
-  5:Project
+  6:Project
   |  <slot 19> : 19: L_ORDERKEY
   |  <slot 23> : 23: L_QUANTITY
   |  
-  4:OlapScanNode
+  5:OlapScanNode
      TABLE: lineitem1
      PREAGGREGATION: ON
      partitions=1/7
@@ -321,18 +321,18 @@ PLAN FRAGMENT 6
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 03
+    EXCHANGE ID: 04
     HASH_PARTITIONED: 1: L_ORDERKEY, 18: sum
 
-  2:AGGREGATE (update finalize)
+  3:AGGREGATE (update finalize)
   |  output: sum(5: L_QUANTITY)
   |  group by: 1: L_ORDERKEY
   |  
-  1:Project
+  2:Project
   |  <slot 1> : 1: L_ORDERKEY
   |  <slot 5> : 5: L_QUANTITY
   |  
-  0:OlapScanNode
+  1:OlapScanNode
      TABLE: lineitem0
      PREAGGREGATION: ON
      partitions=1/7

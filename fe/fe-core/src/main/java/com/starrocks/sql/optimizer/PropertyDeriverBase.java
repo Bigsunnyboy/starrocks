@@ -35,7 +35,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_JOIN;
-import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_SET;
 
 public abstract class PropertyDeriverBase<R, C> extends OperatorVisitor<R, C> {
 
@@ -84,7 +83,7 @@ public abstract class PropertyDeriverBase<R, C> extends OperatorVisitor<R, C> {
             List<Integer> columns = node.getChildOutputColumns().get(i).stream().map(ColumnRefOperator::getId)
                     .collect(Collectors.toList());
             HashDistributionSpec distribution = DistributionSpec.createHashDistributionSpec(
-                    new HashDistributionDesc(columns, SHUFFLE_SET));
+                    new HashDistributionDesc(columns, SHUFFLE_JOIN));
 
             PhysicalPropertySet requiredPropertySet =
                     new PhysicalPropertySet(DistributionProperty.createProperty(distribution));

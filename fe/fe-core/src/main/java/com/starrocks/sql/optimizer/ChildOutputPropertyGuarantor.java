@@ -172,6 +172,11 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
     }
 
     // enforce child round-robin type distribution
+    // In previous version, random shuffle ExchangeNode is interpolated between UnionNode and its children
+    // directly in plan-fragment-build-phase(PlanFragmentBuilder.java); now, random shuffle ExchangeNode is
+    // translated from round-robin PhysicalDistribution enforcer in plan-fragment-build-phase. the motivation
+    // is that union-distinct query can adopt colocate plan or random-shuffle plan which depends on its
+    // children's data distribution uniformly.
     private GroupExpression enforceChildRoundRobinDistribution(GroupExpression child,
                                                             PhysicalPropertySet childOutputProperty, int childIndex) {
         DistributionSpec enforceDistributionSpec = new RoundRobinDistributionSpec();
@@ -371,10 +376,10 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                 ((HashDistributionSpec) childRequiredPropertySets.get(0).getDistributionProperty()
                         .getSpec()).getShuffleColumns();
 
+        boolean isUnionDistinct = (node instanceof PhysicalUnionOperator) &&
+                !((PhysicalUnionOperator) node).isUnionAll();
         boolean disableColocateSet = ConnectContext.get().getSessionVariable().isDisableColocateSet();
         if (!disableColocateSet && firstHashDistSpec.getHashDistributionDesc().isLocal()) {
-            boolean isUnionDistinct = (node instanceof PhysicalUnionOperator) &&
-                    !((PhysicalUnionOperator) node).isUnionAll();
             boolean hasNonColocate = false;
             for (int i = 1; i < childrenOutputProperties.size(); ++i) {
                 DistributionProperty childDistProperty = childrenOutputProperties.get(i).getDistributionProperty();
@@ -395,6 +400,8 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                 return transToRoundRobinUnion(node, context);
             }
             return null;
+        } else if (isUnionDistinct) {
+            return transToRoundRobinUnion(node, context);
         } else {
             for (int i = 0; i < childrenOutputProperties.size(); ++i) {
                 PhysicalPropertySet childPropertySet = childRequiredPropertySets.get(i);

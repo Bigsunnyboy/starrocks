@@ -113,7 +113,7 @@ PLAN FRAGMENT 5(F02)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10001
       SCAN RANGES
-        3:OlapScanNode
+        4:OlapScanNode
           1. partitionID=1665,tabletID=1668
           2. partitionID=1665,tabletID=1674
           3. partitionID=1665,tabletID=1680
@@ -124,7 +124,7 @@ PLAN FRAGMENT 5(F02)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10002
       SCAN RANGES
-        3:OlapScanNode
+        4:OlapScanNode
           1. partitionID=1665,tabletID=1670
           2. partitionID=1665,tabletID=1676
           3. partitionID=1665,tabletID=1682
@@ -135,7 +135,7 @@ PLAN FRAGMENT 5(F02)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10003
       SCAN RANGES
-        3:OlapScanNode
+        4:OlapScanNode
           1. partitionID=1665,tabletID=1666
           2. partitionID=1665,tabletID=1672
           3. partitionID=1665,tabletID=1678
@@ -150,7 +150,7 @@ PLAN FRAGMENT 6(F00)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10001
       SCAN RANGES
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1400
           2. partitionID=1397,tabletID=1406
           3. partitionID=1397,tabletID=1412
@@ -161,7 +161,7 @@ PLAN FRAGMENT 6(F00)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10002
       SCAN RANGES
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1402
           2. partitionID=1397,tabletID=1408
           3. partitionID=1397,tabletID=1414
@@ -172,7 +172,7 @@ PLAN FRAGMENT 6(F00)
       DESTINATIONS: 10-F04#0,11-F04#1,12-F04#2
       BE: 10003
       SCAN RANGES
-        0:OlapScanNode
+        1:OlapScanNode
           1. partitionID=1397,tabletID=1398
           2. partitionID=1397,tabletID=1404
           3. partitionID=1397,tabletID=1410
@@ -265,25 +265,25 @@ PLAN FRAGMENT 4
     EXCHANGE ID: 07
     HASH_PARTITIONED: 35: L_ORDERKEY
 
-  6:INTERSECT
+  0:INTERSECT
   |  
-  |----5:EXCHANGE
+  |----6:EXCHANGE
   |    
-  2:EXCHANGE
+  3:EXCHANGE
 
 PLAN FRAGMENT 5
  OUTPUT EXPRS:
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 05
+    EXCHANGE ID: 06
     HASH_PARTITIONED: 18: L_ORDERKEY, 19: L_PARTKEY
 
-  4:Project
+  5:Project
   |  <slot 18> : 18: L_ORDERKEY
   |  <slot 19> : 19: L_PARTKEY
   |  
-  3:OlapScanNode
+  4:OlapScanNode
      TABLE: lineitem1
      PREAGGREGATION: ON
      partitions=1/7
@@ -298,14 +298,14 @@ PLAN FRAGMENT 6
   PARTITION: RANDOM
 
   STREAM DATA SINK
-    EXCHANGE ID: 02
+    EXCHANGE ID: 03
     HASH_PARTITIONED: 1: L_ORDERKEY, 2: L_PARTKEY
 
-  1:Project
+  2:Project
   |  <slot 1> : 1: L_ORDERKEY
   |  <slot 2> : 2: L_PARTKEY
   |  
-  0:OlapScanNode
+  1:OlapScanNode
      TABLE: lineitem0
      PREAGGREGATION: ON
      partitions=1/7
