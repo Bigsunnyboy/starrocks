@@ -14,7 +14,6 @@
 
 package com.starrocks.sql.ast;
 
-import com.starrocks.analysis.RedirectStatus;
 import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
@@ -33,11 +32,6 @@ public class AddComputeNodeBlackListStmt extends StatementBase {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitAddComputeNodeBlackListStatement(this, context);
-    }
-
-    @Override
-    public RedirectStatus getRedirectStatus() {
-        return RedirectStatus.NO_FORWARD;
+        return ((AstVisitorExtendInterface<R, C>) visitor).visitAddComputeNodeBlackListStatement(this, context);
     }
 }

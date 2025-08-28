@@ -709,6 +709,21 @@ public class Config extends ConfigBase {
     public static int http_port = 8030;
 
     /**
+     * Fe https port
+     * Currently, all FEs' https port must be the same.
+     */
+    @ConfField
+    public static int https_port = 8443;
+
+    /**
+     *  https enable flag. false by default.
+     *  If the value is false, http is supported. Otherwise, https is supported.
+     */
+    @ConfField(comment = "enable https flag. false by default. If true then http " +
+            "and https are both enabled on different ports. Otherwise, only http is enabled.")
+    public static boolean enable_https = false;
+
+    /**
      * Configs for query queue v2.
      * The configs {@code query_queue_v2_xxx} are effective only when {@code enable_query_queue_v2} is true.
      * @see com.starrocks.qe.scheduler.slot.QueryQueueOptions
@@ -1292,6 +1307,11 @@ public class Config extends ConfigBase {
     public static long check_consistency_default_timeout_second = 600; // 10 min
     @ConfField(mutable = true)
     public static long consistency_tablet_meta_check_interval_ms = 2 * 3600 * 1000L; // every 2 hours
+    /**
+     * tablet can be checked only one time on one day, to avoid too many disk io in be
+     */
+    @ConfField(mutable = true)
+    public static long consistency_check_cooldown_time_second = 24 * 3600L; // every 1 day
 
     // Configurations for query engine
     /**
@@ -1458,6 +1478,10 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true, comment = "The interval of create partition batch, to avoid too frequent")
     public static long mv_create_partition_batch_interval_ms = 1000;
+
+    @ConfField(mutable = true, comment = "Whether to prefer string type for fixed length varchar column " +
+            "in materialized view creation/ctas")
+    public static boolean transform_type_prefer_string_for_varchar = false;
 
     /**
      * The number of query retries.
@@ -2482,10 +2506,10 @@ public class Config extends ConfigBase {
     public static String iceberg_metadata_cache_disk_path = StarRocksFE.STARROCKS_HOME_DIR + "/caches/iceberg";
 
     /**
-     * iceberg metadata memory cache total size, default 512MB
+     * iceberg metadata memory cache total size, default 0MB (turn off)
      */
     @ConfField(mutable = true)
-    public static long iceberg_metadata_memory_cache_capacity = 536870912L;
+    public static long iceberg_metadata_memory_cache_capacity = 0L;
 
     /**
      * iceberg metadata memory cache expiration time, default 86500s
@@ -2512,10 +2536,10 @@ public class Config extends ConfigBase {
     public static long iceberg_metadata_disk_cache_expiration_seconds = 7L * 24L * 60L * 60L;
 
     /**
-     * iceberg metadata cache max entry size, default 8MB
+     * iceberg metadata cache max entry size, default 0L (turn off)
      */
     @ConfField(mutable = true)
-    public static long iceberg_metadata_cache_max_entry_size = 8388608L;
+    public static long iceberg_metadata_cache_max_entry_size = 0L;
 
     /**
      * paimon metadata cache preheat, default false
@@ -2974,6 +2998,9 @@ public class Config extends ConfigBase {
     @ConfField(comment = "how many partitions can autovacuum be executed simultaneously at most")
     public static int lake_autovacuum_parallel_partitions = 8;
 
+    @ConfField(comment = "how many partitions can fullvacuum execute simultaneously at most")
+    public static int lake_fullvacuum_parallel_partitions = 16;
+
     @ConfField(mutable = true, comment = "the minimum delay between autovacuum runs on any given partition")
     public static long lake_autovacuum_partition_naptime_seconds = 180;
 
@@ -2990,9 +3017,15 @@ public class Config extends ConfigBase {
                     "Only takes effect for tables in clusters with run_mode=shared_data.\n")
     public static long lake_autovacuum_stale_partition_threshold = 12;
 
-    @ConfField(mutable = true, comment = 
+    @ConfField(mutable = true, comment =
             "Determine whether a vacuum operation needs to be initiated based on the vacuum version.\n")
     public static boolean lake_autovacuum_detect_vaccumed_version = true;
+
+    @ConfField(mutable = true, comment = "the minimum delay between full vacuum runs on any given partition")
+    public static long lake_fullvacuum_partition_naptime_seconds = 3600L * 24L;
+
+    @ConfField(mutable = true, comment = "metadata expired time from full vacuum begin running")
+    public static long lake_fullvacuum_meta_expired_seconds = 3600L * 24L * 2L;
 
     @ConfField(mutable = true, comment =
             "Whether enable throttling ingestion speed when compaction score exceeds the threshold.\n" +
@@ -3760,6 +3793,15 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static long max_graceful_exit_time_second = 60;
 
+    @ConfField(mutable = true)
+    public static long default_statistics_output_row_count = 1L * 1000 * 1000 * 1000;
+
+    /**
+     * Whether enable dynamic tablet.
+     */
+    @ConfField(mutable = true, comment = "Whether enable dynamic tablet.")
+    public static boolean enable_dynamic_tablet = false;
+
     /**
      * The default scheduler interval for dynamic tablet jobs.
      */
@@ -3782,13 +3824,13 @@ public class Config extends ConfigBase {
      * Tablets with size larger than this value will be considered to split.
      */
     @ConfField(mutable = true, comment = "Tablets with size larger than this value will be considered to split.")
-    public static long dynamic_tablet_split_size = 4 * 1024 * 1024 * 1024;
+    public static long dynamic_tablet_split_size = 4L * 1024L * 1024L * 1024L;
 
     /**
      * The max number of new tablets that an old tablet can be split into.
      */
     @ConfField(mutable = true, comment = "The max number of new tablets that an old tablet can be split into.")
-    public static int dynamic_tablet_max_split_count = 1024;
+    public static int dynamic_tablet_max_split_count = 8;
 
     /**
      * Whether to enable tracing historical nodes when cluster scale
@@ -3809,4 +3851,8 @@ public class Config extends ConfigBase {
      */
     @ConfField
     public static int deploy_serialization_queue_size = -1;
+
+    @ConfField(comment = "Enable case-insensitive catalog/database/table names. " +
+            "Only configurable during cluster initialization, immutable once set.")
+    public static boolean enable_table_name_case_insensitive = false;
 }

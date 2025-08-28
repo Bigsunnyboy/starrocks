@@ -48,6 +48,7 @@ import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.ObjectType;
 import com.starrocks.authorization.PrivilegeException;
 import com.starrocks.authorization.PrivilegeType;
+import com.starrocks.catalog.UserIdentity;
 import com.starrocks.cluster.ClusterNamespace;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
@@ -73,13 +74,13 @@ import com.starrocks.sql.analyzer.Authorizer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.CleanTemporaryTableStmt;
 import com.starrocks.sql.ast.ExecuteStmt;
+import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SetListItem;
 import com.starrocks.sql.ast.SetStmt;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.SystemVariable;
-import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.ast.UserVariable;
 import com.starrocks.sql.optimizer.QueryMaterializationContext;
 import com.starrocks.sql.optimizer.dump.DumpInfo;
@@ -112,6 +113,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
+import static com.starrocks.common.util.Util.normalizeName;
 
 // When one client connect in, we create a connection context for it.
 // We store session information here. Meanwhile, ConnectScheduler all
@@ -436,6 +439,10 @@ public class ConnectContext {
 
     public QueryDetail getQueryDetail() {
         return queryDetail;
+    }
+
+    public void setAuditEventBuilder(AuditEventBuilder auditEventBuilder) {
+        this.auditEventBuilder = auditEventBuilder;
     }
 
     public AuditEventBuilder getAuditEventBuilder() {
@@ -1344,6 +1351,7 @@ public class ConnectContext {
     // We can support "use 'catalog <catalog_name>'" from mysql client or "use catalog <catalog_name>" from jdbc.
     public void changeCatalog(String newCatalogName) throws DdlException {
         CatalogMgr catalogMgr = globalStateMgr.getCatalogMgr();
+        newCatalogName = normalizeName(newCatalogName);
         if (!catalogMgr.catalogExists(newCatalogName)) {
             ErrorReport.reportDdlException(ErrorCode.ERR_BAD_CATALOG_ERROR, newCatalogName);
         }
@@ -1377,7 +1385,7 @@ public class ConnectContext {
         if (parts.length == 1) { // use database
             dbName = identifier;
         } else { // use catalog.database
-            String newCatalogName = parts[0];
+            String newCatalogName = normalizeName(parts[0]);
             if (!catalogMgr.catalogExists(newCatalogName)) {
                 ErrorReport.reportDdlException(ErrorCode.ERR_BAD_CATALOG_ERROR, newCatalogName);
             }
@@ -1393,6 +1401,8 @@ public class ConnectContext {
             this.setCurrentCatalog(newCatalogName);
             dbName = parts[1];
         }
+
+        dbName = normalizeName(dbName);
 
         if (!Strings.isNullOrEmpty(dbName) && metadataMgr.getDb(this, this.getCurrentCatalog(), dbName) == null) {
             LOG.debug("Unknown catalog {} and db {}", this.getCurrentCatalog(), dbName);

@@ -50,6 +50,7 @@
 #include "gutil/strings/fastmem.h"
 #include "gutil/strings/strip.h"
 #include "gutil/strings/substitute.h"
+#include "runtime/exception.h"
 #include "runtime/runtime_state.h"
 #include "storage/olap_define.h"
 #include "types/large_int_value.h"
@@ -62,10 +63,10 @@ namespace starrocks {
 // A regex to match any regex pattern is equivalent to a substring search.
 static const RE2 SUBSTRING_RE(R"((?:\.\*)*([^\.\^\{\[\(\|\)\]\}\+\*\?\$\\]+)(?:\.\*)*)", re2::RE2::Quiet);
 
-#define THROW_RUNTIME_ERROR_IF_EXCEED_LIMIT(col, func_name)                          \
-    if (UNLIKELY(!col->capacity_limit_reached().ok())) {                             \
-        col->reset_column();                                                         \
-        throw std::runtime_error("binary column exceed 4G in function " #func_name); \
+#define THROW_RUNTIME_ERROR_IF_EXCEED_LIMIT(col, func_name)                        \
+    if (UNLIKELY(!col->capacity_limit_reached().ok())) {                           \
+        col->reset_column();                                                       \
+        throw RuntimeException("binary column exceed 4G in function " #func_name); \
     }
 
 #define RETURN_COLUMN(stmt, func_name)                                    \
@@ -4847,6 +4848,71 @@ DEFINE_UNARY_FN_WITH_IMPL(crc32Impl, str) {
 
 StatusOr<ColumnPtr> StringFunctions::crc32(FunctionContext* context, const Columns& columns) {
     return VectorizedStrictUnaryFunction<crc32Impl>::evaluate<TYPE_VARCHAR, TYPE_BIGINT>(columns[0]);
+}
+
+// format_bytes
+StatusOr<ColumnPtr> StringFunctions::format_bytes(FunctionContext* context, const Columns& columns) {
+    RETURN_IF_COLUMNS_ONLY_NULL(columns);
+
+    auto num_rows = columns[0]->size();
+    ColumnBuilder<TYPE_VARCHAR> result(num_rows);
+    ColumnViewer<TYPE_BIGINT> bytes_viewer(columns[0]);
+
+    // Unit constants (1024-based)
+    static const int64_t KB = 1024L;
+    static const int64_t MB = KB * 1024L;
+    static const int64_t GB = MB * 1024L;
+    static const int64_t TB = GB * 1024L;
+    static const int64_t PB = TB * 1024L;
+    static const int64_t EB = PB * 1024L;
+
+    static const char* units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
+    static const int64_t thresholds[] = {1, KB, MB, GB, TB, PB, EB};
+
+    for (int row = 0; row < num_rows; ++row) {
+        if (bytes_viewer.is_null(row)) {
+            result.append_null();
+            continue;
+        }
+
+        int64_t bytes = bytes_viewer.value(row);
+
+        // Handle edge cases
+        if (bytes < 0) {
+            result.append_null();
+            continue;
+        }
+
+        if (bytes == 0) {
+            result.append("0 B");
+            continue;
+        }
+
+        // Find appropriate unit
+        int unit_index = 0;
+        for (int i = 6; i >= 0; --i) {
+            if (bytes >= thresholds[i]) {
+                unit_index = i;
+                break;
+            }
+        }
+
+        std::string formatted;
+        if (unit_index == 0) {
+            // Bytes - no decimal places
+            formatted = std::to_string(bytes) + " B";
+        } else {
+            // Higher units - 2 decimal places
+            double value = static_cast<double>(bytes) / thresholds[unit_index];
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(2) << value << " " << units[unit_index];
+            formatted = oss.str();
+        }
+
+        result.append(Slice(formatted.data(), formatted.size()));
+    }
+
+    return result.build(ColumnHelper::is_all_const(columns));
 }
 } // namespace starrocks
 
