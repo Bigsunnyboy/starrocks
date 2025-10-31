@@ -20,16 +20,17 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.gson.annotations.SerializedName;
-import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.catalog.PrimitiveType;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.common.Config;
 import com.starrocks.connector.PartitionUtil;
 import com.starrocks.connector.hive.HiveMetaClient;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.sql.ast.PartitionValue;
+import com.starrocks.sql.ast.expression.LiteralExpr;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -213,9 +214,46 @@ public final class PListCell extends PCell {
 
     @Override
     public String toString() {
-        return "PListCell{" +
-                "items=" + partitionItems +
-                '}';
+        if (CollectionUtils.isEmpty(partitionItems)) {
+            return "";
+        }
+        int maxLen = Config.max_mv_task_run_meta_message_values_length;
+        int size = partitionItems.size();
+        StringBuilder result = new StringBuilder();
+        if (size <= maxLen) {
+            // Join all names if under limit
+            for (int i = 0; i < size; i++) {
+                List<String> item = partitionItems.get(i);
+                result.append("(");
+                result.append(String.join(",", item));
+                result.append(")");
+                if (i != size - 1) {
+                    result.append(",");
+                }
+            }
+        } else {
+            int half = maxLen / 2;
+            // prefix
+            for (int i = 0; i < half; i++) {
+                List<String> item = partitionItems.get(i);
+                result.append("(");
+                result.append(String.join(",", item));
+                result.append(")");
+                result.append(",");
+            }
+            result.append("...,");
+            // suffix
+            for (int i = size - half; i < size; i++) {
+                List<String> item = partitionItems.get(i);
+                result.append("(");
+                result.append(String.join(",", item));
+                result.append(")");
+                if (i != size - 1) {
+                    result.append(",");
+                }
+            }
+        }
+        return result.toString();
     }
 
     /**

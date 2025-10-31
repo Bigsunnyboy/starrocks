@@ -44,8 +44,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cache/block_cache/block_cache.h"
 #include "cache/datacache_utils.h"
+#include "cache/disk_cache/block_cache.h"
 #include "cctz/time_zone.h"
 #include "common/global_types.h"
 #include "common/object_pool.h"
@@ -93,7 +93,7 @@ constexpr int64_t kRpcHttpMinSize = ((1L << 31) - (1L << 10));
 class RuntimeState {
 public:
     // for ut only
-    RuntimeState() = default;
+    RuntimeState();
     // for ut only
     RuntimeState(const TUniqueId& fragment_instance_id, const TQueryOptions& query_options,
                  const TQueryGlobals& query_globals, ExecEnv* exec_env);
@@ -362,6 +362,11 @@ public:
         return _spill_options->spill_partitionwise_agg_skew_elimination;
     }
 
+    bool enable_full_sort_use_german_string() const {
+        return _query_options.__isset.enable_full_sort_use_german_string &&
+               _query_options.enable_full_sort_use_german_string;
+    }
+
     int32_t spill_mem_table_size() const {
         return EXTRACE_SPILL_PARAM(_query_options, _spill_options, spill_mem_table_size);
     }
@@ -440,6 +445,11 @@ public:
     bool enable_hash_join_linear_chained_opt() const {
         return _query_options.__isset.enable_hash_join_linear_chained_opt &&
                _query_options.enable_hash_join_linear_chained_opt;
+    }
+
+    bool enable_hash_join_serialize_fixed_size_string() const {
+        return _query_options.__isset.enable_hash_join_serialize_fixed_size_string &&
+               _query_options.enable_hash_join_serialize_fixed_size_string;
     }
 
     const std::vector<TTabletCommitInfo>& tablet_commit_infos() const { return _tablet_commit_infos; }

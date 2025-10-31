@@ -18,11 +18,6 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
-import com.starrocks.analysis.BinaryType;
-import com.starrocks.analysis.Expr;
-import com.starrocks.analysis.LiteralExpr;
-import com.starrocks.analysis.SlotRef;
-import com.starrocks.analysis.TableName;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.HiveTable;
 import com.starrocks.catalog.IcebergTable;
@@ -47,6 +42,11 @@ import com.starrocks.sql.analyzer.Field;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.Scope;
+import com.starrocks.sql.ast.expression.BinaryType;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.LiteralExpr;
+import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.TableName;
 import com.starrocks.sql.common.PCell;
 import com.starrocks.sql.common.PListCell;
 import com.starrocks.sql.common.PRangeCell;
@@ -68,6 +68,7 @@ import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.Snapshot;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -248,21 +249,30 @@ public final class ExternalTableCompensation extends TableCompensation {
             if (range.lowerEndpoint().equals(range.upperEndpoint())) {
                 partitions.add(getPartitionKeyString(range.lowerEndpoint()));
             } else {
-                sb.append(getPartitionKeyString(key.getRange().lowerEndpoint()))
-                        .append(" - ")
-                        .append(getPartitionKeyString(key.getRange().upperEndpoint()));
+                partitions.add(getPartitionKeyString(key.getRange().lowerEndpoint())
+                        + "-" + getPartitionKeyString(key.getRange().upperEndpoint()));
             }
         }
-        sb.append(Joiner.on(",").join(partitions));
+        Collections.sort(partitions);
+        if (size < compensations.size()) {
+            // output the fist half of partitions
+            int half = size / 2;
+            sb.append(Joiner.on(",").join(partitions.subList(0, half)));
+            sb.append(",...");
+            sb.append(",").append(partitions.subList(half, size));
+        } else {
+            sb.append(Joiner.on(",").join(partitions));
+        }
         sb.append("]");
         return sb.toString();
     }
+
     private String getPartitionKeyString(PartitionKey key) {
         List<String> keys = key.getKeys()
                 .stream()
                 .map(LiteralExpr::getStringValue)
                 .collect(Collectors.toList());
-        return "(" + Joiner.on(",").join(keys) + ")";
+        return Joiner.on(",").join(keys);
     }
 
     public static TableCompensation build(Table refBaseTable,

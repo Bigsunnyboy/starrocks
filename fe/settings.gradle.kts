@@ -16,9 +16,12 @@ rootProject.name = "starrocks-fe"
 
 include(
     "fe-grammar",
+    "fe-parser",
+    "fe-spi",
     "fe-utils",
     "fe-testing",
     "plugin:spark-dpp",
+    "plugin:hive-udf",
     "fe-core",
-    "plugin:hive-udf"
+    "fe-server"
 )

@@ -43,9 +43,6 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.starrocks.analysis.BloomFilterIndexUtil;
-import com.starrocks.analysis.ColumnPosition;
-import com.starrocks.analysis.SlotRef;
 import com.starrocks.binlog.BinlogConfig;
 import com.starrocks.catalog.AggregateType;
 import com.starrocks.catalog.ArrayType;
@@ -64,6 +61,7 @@ import com.starrocks.catalog.OlapTable.OlapTableState;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.Replica;
+import com.starrocks.catalog.SchemaChangeTypeCompatibility;
 import com.starrocks.catalog.SchemaInfo;
 import com.starrocks.catalog.StructField;
 import com.starrocks.catalog.StructType;
@@ -101,6 +99,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.analyzer.FeNameFormat;
+import com.starrocks.sql.analyzer.IndexAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AddColumnClause;
 import com.starrocks.sql.ast.AddColumnsClause;
@@ -109,6 +108,7 @@ import com.starrocks.sql.ast.AlterClause;
 import com.starrocks.sql.ast.AlterTableColumnClause;
 import com.starrocks.sql.ast.CancelAlterTableStmt;
 import com.starrocks.sql.ast.CancelStmt;
+import com.starrocks.sql.ast.ColumnPosition;
 import com.starrocks.sql.ast.CreateIndexClause;
 import com.starrocks.sql.ast.DropColumnClause;
 import com.starrocks.sql.ast.DropFieldClause;
@@ -121,6 +121,7 @@ import com.starrocks.sql.ast.ModifyColumnCommentClause;
 import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.OptimizeClause;
 import com.starrocks.sql.ast.ReorderColumnsClause;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.task.AgentBatchTask;
 import com.starrocks.task.AgentTaskExecutor;
@@ -912,6 +913,26 @@ public class SchemaChangeHandler extends AlterHandler {
             }
         }
 
+        if (!SchemaChangeTypeCompatibility.canReuseZonemapIndex(oriColumn.getType(), modColumn.getType())) {
+            return false;
+        }
+
+        // Check whether manually created indexes support fast schema evolution. The rules are as follows:
+        // 1. The index can be reused after type conversion, and BE has made necessary changes,
+        //    such as casting new type values to old type values before querying the index.
+        // 2. The index cannot be reused, and BE has made changes to skip it during queries.
+        // Currently, BLOOMFILTER and NGRAMBF indexes use rule 2 to support fast schema evolution. BE-side changes
+        // for other indexes are not yet ready, so fast schema change is temporarily disabled for them. This feature
+        // will be gradually enabled for these indexes once BE support is in place.
+        List<Index> existedIndexes = olapTable.getIndexes();
+        for (Index index : existedIndexes) {
+            if (index.getColumns().contains(oriColumn.getColumnId())) {
+                if (index.getIndexType() != IndexDef.IndexType.NGRAMBF) {
+                    return false;
+                }
+            }
+        }
+
         return fastSchemaEvolution;
     }
 
@@ -1151,11 +1172,6 @@ public class SchemaChangeHandler extends AlterHandler {
             throw new DdlException("PERCENTILE_UNION must be used in AGG_KEYS");
         }
 
-        //type key column do not allow light schema change.
-        if (newColumn.isKey()) {
-            fastSchemaEvolution = false;
-        }
-
         // check if the new column already exist in base schema.
         // do not support adding new column which already exist in base schema.
         Optional<Column> foundColumn = olapTable.getBaseSchema().stream()
@@ -1163,6 +1179,11 @@ public class SchemaChangeHandler extends AlterHandler {
         if (foundColumn.isPresent() && newColumn.equals(foundColumn.get())) {
             throw new DdlException(
                     "Can not add column which already exists in base table: " + newColName);
+        }
+
+        // TODO shared-nothing needs to modify codes on BE side, and will support fast schema evolution later
+        if (newColumn.isKey() && RunMode.isSharedNothingMode()) {
+            fastSchemaEvolution = false;
         }
 
         // check if the new column already exist in column id.
@@ -1486,7 +1507,7 @@ public class SchemaChangeHandler extends AlterHandler {
             }
         }
 
-        BloomFilterIndexUtil.analyseBfWithNgramBf(olapTable, newSet, bfColumnIds);
+        IndexAnalyzer.analyseBfWithNgramBf(olapTable, newSet, bfColumnIds);
 
         // property 3: timeout
         long timeoutSecond = PropertyAnalyzer.analyzeTimeout(propertyMap, Config.alter_table_timeout_second);
@@ -1512,7 +1533,6 @@ public class SchemaChangeHandler extends AlterHandler {
             dataBuilder.withComputeResource(computeResource);
         }
 
-        long baseIndexId = olapTable.getBaseIndexId();
         Map<Integer, Column> columnUniqueIdToColumn = Maps.newHashMap();
         // begin checking each table
         // ATTN: DO NOT change any meta in this loop
@@ -1600,46 +1620,7 @@ public class SchemaChangeHandler extends AlterHandler {
             checkDistributionColumnChange(olapTable, alterSchema, alterIndexId);
 
             // 5. calc short key
-            List<Integer> sortKeyIdxes = new ArrayList<>();
-            List<Integer> sortKeyUniqueIds = new ArrayList<>();
-            MaterializedIndexMeta index = olapTable.getIndexMetaByIndexId(alterIndexId);
-            // if sortKeyUniqueIds is empty, the table maybe create in old version and we should use sortKeyIdxes
-            // to determine which columns are sort key columns
-            boolean useSortKeyUniqueId = (index.getSortKeyUniqueIds() != null) &&
-                    (!index.getSortKeyUniqueIds().isEmpty());
-            if (index.getSortKeyIdxes() != null && baseIndexId == alterIndexId) {
-                List<Integer> originSortKeyIdxes = index.getSortKeyIdxes();
-                for (Integer colIdx : originSortKeyIdxes) {
-                    String columnName = index.getSchema().get(colIdx).getName();
-                    Optional<Column> oneCol =
-                            alterSchema.stream().filter(c -> c.nameEquals(columnName, true)).findFirst();
-                    if (oneCol.isEmpty()) {
-                        LOG.warn("Sort Key Column[" + columnName + "] not exists in new schema");
-                        throw new DdlException("Sort Key Column[" + columnName + "] not exists in new schema");
-                    }
-                    int sortKeyIdx = alterSchema.indexOf(oneCol.get());
-                    sortKeyIdxes.add(sortKeyIdx);
-                    if (useSortKeyUniqueId) {
-                        sortKeyUniqueIds.add(alterSchema.get(sortKeyIdx).getUniqueId());
-                    }
-                }
-            }
-            if (!sortKeyIdxes.isEmpty()) {
-                short newShortKeyCount = GlobalStateMgr.calcShortKeyColumnCount(alterSchema,
-                        indexIdToProperties.get(alterIndexId),
-                        sortKeyIdxes);
-                LOG.debug("alter index[{}] short key column count: {}", alterIndexId, newShortKeyCount);
-                dataBuilder.withNewIndexShortKeyCount(alterIndexId,
-                        newShortKeyCount).withNewIndexSchema(alterIndexId, alterSchema);
-                dataBuilder.withSortKeyIdxes(sortKeyIdxes);
-                dataBuilder.withSortKeyUniqueIds(sortKeyUniqueIds);
-            } else {
-                short newShortKeyCount = GlobalStateMgr.calcShortKeyColumnCount(alterSchema,
-                        indexIdToProperties.get(alterIndexId));
-                LOG.debug("alter index[{}] short key column count: {}", alterIndexId, newShortKeyCount);
-                dataBuilder.withNewIndexShortKeyCount(alterIndexId,
-                        newShortKeyCount).withNewIndexSchema(alterIndexId, alterSchema);
-            }
+            calculateShortKey(olapTable, alterIndexId, alterSchema, indexIdToProperties.get(alterIndexId), dataBuilder);
 
             // 6. check the uniqueness of column unique id
             if (olapTable.getMaxColUniqueId() > Column.COLUMN_UNIQUE_ID_INIT_VALUE) {
@@ -1658,6 +1639,86 @@ public class SchemaChangeHandler extends AlterHandler {
         } // end for indices
 
         return dataBuilder.build();
+    }
+
+    private void calculateShortKey(OlapTable olapTable, long alterIndexId, List<Column> alterSchema,
+               Map<String, String> indexProperties, SchemaChangeData.Builder dataBuilder) throws DdlException {
+        List<Integer> sortKeyIdxes = new ArrayList<>();
+        List<Integer> sortKeyUniqueIds = new ArrayList<>();
+        MaterializedIndexMeta index = olapTable.getIndexMetaByIndexId(alterIndexId);
+        List<Column> originSchema = index.getSchema();
+        // if sortKeyUniqueIds is empty, the table maybe create in old version and we should use sortKeyIdxes
+        // to determine which columns are sort key columns
+        boolean useSortKeyUniqueId = (index.getSortKeyUniqueIds() != null) &&
+                (!index.getSortKeyUniqueIds().isEmpty());
+        if (index.getSortKeyIdxes() != null && olapTable.getBaseIndexId() == alterIndexId) {
+            List<Integer> originSortKeyIdxes = index.getSortKeyIdxes();
+            for (Integer colIdx : originSortKeyIdxes) {
+                String columnName = originSchema.get(colIdx).getName();
+                Optional<Column> oneCol =
+                        alterSchema.stream().filter(c -> c.nameEquals(columnName, true)).findFirst();
+                if (oneCol.isEmpty()) {
+                    LOG.warn("Sort Key Column[" + columnName + "] not exists in new schema");
+                    throw new DdlException("Sort Key Column[" + columnName + "] not exists in new schema");
+                }
+                int sortKeyIdx = alterSchema.indexOf(oneCol.get());
+                sortKeyIdxes.add(sortKeyIdx);
+                if (useSortKeyUniqueId) {
+                    sortKeyUniqueIds.add(alterSchema.get(sortKeyIdx).getUniqueId());
+                }
+            }
+        }
+
+        if (!sortKeyIdxes.isEmpty()) {
+            short newShortKeyCount = GlobalStateMgr.calcShortKeyColumnCount(alterSchema,
+                    indexProperties, sortKeyIdxes);
+            LOG.debug("alter index[{}] short key column count: {}", alterIndexId, newShortKeyCount);
+
+            List<Integer> originSortKeyIdxes = index.getSortKeyIdxes();
+            List<Column> originShortKeyColumns = new ArrayList<>();
+            for (int i = 0; i < index.getShortKeyColumnCount(); i++) {
+                originShortKeyColumns.add(originSchema.get(originSortKeyIdxes.get(i)));
+            }
+            List<Column> newShortKeyColumns = new ArrayList<>();
+            for (int i = 0; i < newShortKeyCount; i++) {
+                newShortKeyColumns.add(alterSchema.get(sortKeyIdxes.get(i)));
+            }
+            boolean isShortKeyChanged = isShortKeyChanged(originShortKeyColumns, newShortKeyColumns);
+            dataBuilder.withNewIndexShortKeyCount(alterIndexId,
+                    newShortKeyCount, isShortKeyChanged).withNewIndexSchema(alterIndexId, alterSchema);
+            dataBuilder.withSortKeyIdxes(sortKeyIdxes);
+            dataBuilder.withSortKeyUniqueIds(sortKeyUniqueIds);
+        } else {
+            short newShortKeyCount = GlobalStateMgr.calcShortKeyColumnCount(alterSchema, indexProperties);
+            LOG.debug("alter index[{}] short key column count: {}", alterIndexId, newShortKeyCount);
+            
+            List<Column> originShortKeyColumns = new ArrayList<>();
+            for (int i = 0; i < index.getShortKeyColumnCount(); i++) {
+                originShortKeyColumns.add(originSchema.get(i));
+            }
+            List<Column> newShortKeyColumns = new ArrayList<>();
+            for (int i = 0; i < newShortKeyCount; i++) {
+                newShortKeyColumns.add(alterSchema.get(i));
+            }
+            boolean isShortKeyChanged = isShortKeyChanged(originShortKeyColumns, newShortKeyColumns);
+            dataBuilder.withNewIndexShortKeyCount(alterIndexId,
+                    newShortKeyCount, isShortKeyChanged).withNewIndexSchema(alterIndexId, alterSchema);
+        }
+    }
+
+    private boolean isShortKeyChanged(List<Column> originShortKeyColumns, List<Column> newShortKeyColumns) {
+        if (originShortKeyColumns.size() != newShortKeyColumns.size()) {
+            return true;
+        }
+        for (int i = 0; i < originShortKeyColumns.size(); i++) {
+            Column originColumn = originShortKeyColumns.get(i);
+            Column newColumn = newShortKeyColumns.get(i);
+            if (!originColumn.getName().equalsIgnoreCase(newColumn.getName())
+                    || !originColumn.getType().equals(newColumn.getType())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     protected static Map<String, Column> buildSchemaMapFromList(List<Column> schema, boolean ignorePrefix,
@@ -2016,6 +2077,9 @@ public class SchemaChangeHandler extends AlterHandler {
 
         SchemaChangeData schemaChangeData = finalAnalyze(db, olapTable, indexSchemaMap, propertyMap, newIndexes,
                 modifyFieldColumns);
+        if (schemaChangeData.isShortKeyChanged()) {
+            fastSchemaEvolution = false;
+        }
 
         if (schemaChangeData.getNewIndexSchema().isEmpty() && !schemaChangeData.isHasIndexChanged()) {
             // Nothing changed.
@@ -2677,22 +2741,15 @@ public class SchemaChangeHandler extends AlterHandler {
 
     public void updateTableConstraint(Database db, String tableName, Map<String, String> properties)
             throws DdlException {
-        Locker locker = new Locker();
-        if (!locker.lockDatabaseAndCheckExist(db, LockType.READ)) {
+        if (db == null || !db.isExist()) {
             throw new DdlException(String.format("db:%s does not exists.", db.getFullName()));
         }
-        TableProperty tableProperty;
-        OlapTable olapTable;
-        try {
-            Table table = GlobalStateMgr.getCurrentState().getLocalMetastore().getTable(db.getFullName(), tableName);
-            if (table == null) {
-                throw new DdlException(String.format("table:%s does not exist", tableName));
-            }
-            olapTable = (OlapTable) table;
-            tableProperty = olapTable.getTableProperty();
-        } finally {
-            locker.unLockDatabase(db.getId(), LockType.READ);
+        Table table = GlobalStateMgr.getCurrentState().getLocalMetastore().getTable(db.getFullName(), tableName);
+        if (table == null) {
+            throw new DdlException(String.format("table:%s does not exist", tableName));
         }
+        OlapTable olapTable = (OlapTable) table;
+        TableProperty tableProperty = olapTable.getTableProperty();
 
         boolean hasChanged = false;
         if (tableProperty != null) {
@@ -2741,6 +2798,8 @@ public class SchemaChangeHandler extends AlterHandler {
         if (!hasChanged) {
             return;
         }
+
+        Locker locker = new Locker();
         locker.lockTablesWithIntensiveDbLock(db.getId(), Lists.newArrayList(olapTable.getId()), LockType.WRITE);
         try {
             GlobalStateMgr.getCurrentState().getLocalMetastore().modifyTableConstraint(db, tableName, properties);
@@ -2807,9 +2866,20 @@ public class SchemaChangeHandler extends AlterHandler {
 
     private void processAddIndex(CreateIndexClause alterClause, OlapTable olapTable, List<Index> newIndexes)
             throws StarRocksException {
-        Index newIndex = alterClause.getIndex();
-        if (newIndex == null) {
-            return;
+        // Create Index object directly from IndexDef
+        IndexDef indexDef = alterClause.getIndexDef();
+        Index newIndex;
+        // Only assign meaningful indexId for OlapTable
+        if (olapTable.isOlapTableOrMaterializedView()) {
+            long indexId = IndexDef.IndexType.isCompatibleIndex(indexDef.getIndexType()) ? 
+                    olapTable.incAndGetMaxIndexId() : -1;
+            newIndex = new Index(indexId, indexDef.getIndexName(),
+                    MetaUtils.getColumnIdsByColumnNames(olapTable, indexDef.getColumns()),
+                    indexDef.getIndexType(), indexDef.getComment(), indexDef.getProperties());
+        } else {
+            newIndex = new Index(indexDef.getIndexName(),
+                    MetaUtils.getColumnIdsByColumnNames(olapTable, indexDef.getColumns()),
+                    indexDef.getIndexType(), indexDef.getComment(), indexDef.getProperties());
         }
 
         if (newIndex.getIndexType() == IndexType.GIN) {
@@ -2831,7 +2901,6 @@ public class SchemaChangeHandler extends AlterHandler {
         }
 
         List<Index> existedIndexes = olapTable.getIndexes();
-        IndexDef indexDef = alterClause.getIndexDef();
         Set<String> newColset = Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER);
         newColset.addAll(indexDef.getColumns());
         for (Index existedIdx : existedIndexes) {
@@ -2860,7 +2929,7 @@ public class SchemaChangeHandler extends AlterHandler {
             if (column != null) {
                 // only throw DdlException
                 try {
-                    indexDef.checkColumn(column, olapTable.getKeysType());
+                    IndexAnalyzer.checkColumn(column, indexDef.getIndexType(), indexDef.getProperties(), olapTable.getKeysType());
                 } catch (Exception e) {
                     throw new DdlException(e.getMessage());
                 }

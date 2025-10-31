@@ -19,6 +19,9 @@
 #ifdef __SSE2__
 #include <emmintrin.h>
 #include <immintrin.h>
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+#include <arm_acle.h>
+#include <arm_neon.h>
 #endif
 
 #include <cstddef>
@@ -190,6 +193,9 @@ ALWAYS_INLINE inline void memcpy_inlined(void* __restrict _dst, const void* __re
 }
 
 ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const void* __restrict _src, ssize_t size) {
+#if defined(__APPLE__)
+    memcpy(_dst, _src, size);
+#else
     auto* __restrict dst = static_cast<uint8_t*>(_dst);
     const auto* __restrict src = static_cast<const uint8_t*>(_src);
 
@@ -207,6 +213,7 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
         // Inhibit loop-idiom optimization of compilers, which would collapse the per-16B copies into a single memcpy.
         __asm__ __volatile__("" : : : "memory");
     }
+#endif
 }
 
 } // namespace strings

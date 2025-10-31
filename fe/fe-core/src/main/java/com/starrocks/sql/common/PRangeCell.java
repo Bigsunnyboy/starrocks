@@ -82,6 +82,22 @@ public final class PRangeCell extends PCell {
                 this.range.lowerEndpoint().compareTo(other.range.upperEndpoint()) < 0;
     }
 
+    /**
+     * Check two partition ranges are `overlapped`, which means they are intersected and not equal.
+     * eg:
+     * this is aligned with other:
+     * this :     |--------------|
+     * other:     |----|
+     * this :     |--------------|
+     * other:     |--------------|
+     * this is unaligned with other:
+     * this :     |--------------|
+     * other:  |----|
+     */
+    public boolean isUnAligned(PCell o) {
+        return isIntersected(o) && !equals(o);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (o == this) {
@@ -101,9 +117,14 @@ public final class PRangeCell extends PCell {
 
     @Override
     public String toString() {
-        return "PRangeCell{" +
-                "range=" + range +
-                '}';
+        return "[%s-%s]".formatted(toString(range.lowerEndpoint()), toString(range.upperEndpoint()));
+    }
+
+    private String toString(PartitionKey partitionKey) {
+        if (partitionKey == null) {
+            return "null";
+        }
+        return partitionKey.toSql();
     }
 
     public static Map<String, Range<PartitionKey>> toRangeMap(Map<String, PCell> input) {

@@ -115,8 +115,9 @@ StatusOr<ColumnPtr> ArrayMapExpr::evaluate_lambda_expr(ExprContext* context, Chu
     // 2. check captured columns' size
     for (auto slot_id : capture_slot_ids) {
         DCHECK(slot_id > 0);
-        auto captured_column = chunk->is_slot_exist(slot_id) ? chunk->get_column_by_slot_id(slot_id)
-                                                             : tmp_chunk->get_column_by_slot_id(slot_id);
+        auto captured_column = tmp_chunk->is_slot_exist(slot_id) ? tmp_chunk->get_column_by_slot_id(slot_id)
+                                                                 : chunk->get_column_by_slot_id(slot_id);
+
         if (UNLIKELY(captured_column->size() < input_elements[0]->size())) {
             return Status::InternalError(fmt::format("The size of the captured column {} is less than array's size.",
                                                      captured_column->get_name()));
@@ -124,7 +125,7 @@ StatusOr<ColumnPtr> ArrayMapExpr::evaluate_lambda_expr(ExprContext* context, Chu
     }
 
     UInt32Column::Ptr aligned_offsets = nullptr;
-    size_t null_rows = result_null_column ? SIMD::count_nonzero(result_null_column->get_data()) : 0;
+    size_t null_rows = result_null_column ? SIMD::count_nonzero(result_null_column->immutable_data()) : 0;
 
     std::vector<SlotId> arguments_ids;
     int argument_num = lambda_func->get_lambda_arguments_ids(&arguments_ids);
@@ -157,8 +158,8 @@ StatusOr<ColumnPtr> ArrayMapExpr::evaluate_lambda_expr(ExprContext* context, Chu
             }
         } else {
             if (result_null_column != nullptr) {
-                data_column->empty_null_in_complex_column(result_null_column->get_data(),
-                                                          array_column->offsets().get_data());
+                data_column->empty_null_in_complex_column(result_null_column->immutable_data(),
+                                                          array_column->offsets().immutable_data());
             }
             elements_column = down_cast<const ArrayColumn*>(data_column.get())->elements_column();
         }
@@ -176,8 +177,8 @@ StatusOr<ColumnPtr> ArrayMapExpr::evaluate_lambda_expr(ExprContext* context, Chu
 
     // 4. prepare capture columns
     for (auto slot_id : capture_slot_ids) {
-        auto captured_column = chunk->is_slot_exist(slot_id) ? chunk->get_column_by_slot_id(slot_id)
-                                                             : tmp_chunk->get_column_by_slot_id(slot_id);
+        auto captured_column = tmp_chunk->is_slot_exist(slot_id) ? tmp_chunk->get_column_by_slot_id(slot_id)
+                                                                 : chunk->get_column_by_slot_id(slot_id);
         if constexpr (independent_lambda_expr) {
             cur_chunk->append_column(captured_column, slot_id);
         } else {

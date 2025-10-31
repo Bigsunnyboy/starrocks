@@ -539,6 +539,11 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
         this.balanceType = balanceType;
     }
 
+    public boolean isIntraNodeBalance() {
+        return balanceType != null &&
+                (balanceType == BalanceType.INTRA_NODE_DISK_USAGE || balanceType == BalanceType.INTRA_NODE_TABLET_DISTRIBUTION);
+    }
+
     public void setSrcPathResourceHold() {
         this.srcPathResourceHold = true;
     }
@@ -564,12 +569,11 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
                 tabletHealthStatus == TabletHealthStatus.NEED_FURTHER_REPAIR;
     }
 
-    public List<Replica> getHealthyReplicas() {
+    public List<Replica> getHealthyReplicas(boolean includeDecommissioned) {
         List<Replica> candidates = Lists.newArrayList();
         for (Replica replica : tablet.getImmutableReplicas()) {
-            if (replica.isBad()
-                    || replica.getState() == ReplicaState.DECOMMISSION
-                    || replica.getState() == ReplicaState.RECOVER) {
+            if (replica.isBad() || replica.getState() == ReplicaState.RECOVER ||
+                    (!includeDecommissioned && replica.getState() == ReplicaState.DECOMMISSION)) {
                 continue;
             }
 
@@ -604,10 +608,13 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
          * 1. source replica should be healthy.
          * 2. slot of this source replica is available.
          */
-        List<Replica> candidates = getHealthyReplicas();
+        List<Replica> candidates = getHealthyReplicas(false);
         if (candidates.isEmpty()) {
-            throw new SchedException(Status.UNRECOVERABLE,
-                    "unable to find source replica. replicas: " + tablet.getReplicaInfos());
+            candidates = getHealthyReplicas(true);
+            if (candidates.isEmpty()) {
+                throw new SchedException(Status.UNRECOVERABLE,
+                        "unable to find source replica. replicas: " + tablet.getReplicaInfos());
+            }    
         }
 
         // Shuffle the candidate list first so that we won't always choose the same replica with
@@ -1011,7 +1018,7 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
      * 1. SCHEDULE_FAILED: will keep the tablet RUNNING.
      * 2. UNRECOVERABLE: will remove the tablet from runningTablets.
      */
-    public void finishCloneTask(CloneTask cloneTask, TFinishTaskRequest request)
+    public void finishCloneTask(CloneTask cloneTask, TFinishTaskRequest request, TabletSchedulerStat stat)
             throws SchedException {
         Preconditions.checkState(state == State.RUNNING, state);
         Preconditions.checkArgument(cloneTask.getTaskVersion() == CloneTask.VERSION_2);
@@ -1105,10 +1112,20 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
 
         if (request.isSetCopy_size()) {
             this.copySize = request.getCopy_size();
+            if (isIntraNodeBalance()) {
+                stat.counterCloneTaskIntraNodeCopyBytes.addAndGet(copySize);
+            } else {
+                stat.counterCloneTaskInterNodeCopyBytes.addAndGet(copySize);
+            }
         }
 
         if (request.isSetCopy_time_ms()) {
             this.copyTimeMs = request.getCopy_time_ms();
+            if (isIntraNodeBalance()) {
+                stat.counterCloneTaskIntraNodeCopyDurationMs.addAndGet(copyTimeMs);
+            } else {
+                stat.counterCloneTaskInterNodeCopyDurationMs.addAndGet(copyTimeMs);
+            }
         }
     }
 

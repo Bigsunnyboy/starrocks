@@ -20,13 +20,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
-import com.starrocks.analysis.DescriptorTable;
-import com.starrocks.analysis.Expr;
-import com.starrocks.analysis.FunctionCallExpr;
-import com.starrocks.analysis.IntLiteral;
-import com.starrocks.analysis.LiteralExpr;
-import com.starrocks.analysis.NullLiteral;
-import com.starrocks.analysis.SlotRef;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.Util;
@@ -34,12 +27,29 @@ import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.connector.iceberg.IcebergApiConverter;
 import com.starrocks.connector.iceberg.IcebergCatalogType;
+import com.starrocks.connector.iceberg.IcebergTableOperation;
+import com.starrocks.connector.iceberg.procedure.AddFilesProcedure;
+import com.starrocks.connector.iceberg.procedure.CherryPickSnapshotProcedure;
+import com.starrocks.connector.iceberg.procedure.ExpireSnapshotsProcedure;
+import com.starrocks.connector.iceberg.procedure.FastForwardProcedure;
+import com.starrocks.connector.iceberg.procedure.IcebergTableProcedure;
+import com.starrocks.connector.iceberg.procedure.RemoveOrphanFilesProcedure;
+import com.starrocks.connector.iceberg.procedure.RewriteDataFilesProcedure;
+import com.starrocks.connector.iceberg.procedure.RollbackToSnapshotProcedure;
 import com.starrocks.persist.ColumnIdExpr;
+import com.starrocks.planner.DescriptorTable;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.ExprToThriftVisitor;
+import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.IntLiteral;
+import com.starrocks.sql.ast.expression.LiteralExpr;
+import com.starrocks.sql.ast.expression.NullLiteral;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TBucketFunction;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TCompressedPartitionMap;
@@ -87,6 +97,7 @@ public class IcebergTable extends Table {
     public static final String DATA_SEQUENCE_NUMBER = "$data_sequence_number";
     public static final String SPEC_ID = "$spec_id";
     public static final String EQUALITY_DELETE_TABLE_COMMENT = "equality_delete_table_comment";
+    public static final String ROW_ID = "_row_id";
 
     private String catalogName;
     @SerializedName(value = "dn")
@@ -236,30 +247,33 @@ public class IcebergTable extends Table {
         return ((BaseTable) getNativeTable()).operations().current().formatVersion() > 1;
     }
 
+    public int getFormatVersion() {
+        return ((BaseTable) getNativeTable()).operations().current().formatVersion();
+    }
     /**
      * <p>
-     *     In the Iceberg Partition Evolution scenario, 'org.apache.iceberg.PartitionField#name' only represents the
-     *     name of a partition in the Iceberg table's Partition Spec. This name is used when trying to obtain the
-     *     names of Partition Spec partitions. e.g.
+     * In the Iceberg Partition Evolution scenario, 'org.apache.iceberg.PartitionField#name' only represents the
+     * name of a partition in the Iceberg table's Partition Spec. This name is used when trying to obtain the
+     * names of Partition Spec partitions. e.g.
      * </p>
      * <p>
-     *     {
-     *   "source-id": 4,
-     *   "field-id": 1000,
-     *   "name": "ts_day",
-     *   "transform": "day"
-     *   }
+     * {
+     * "source-id": 4,
+     * "field-id": 1000,
+     * "name": "ts_day",
+     * "transform": "day"
+     * }
      * </p>
      * <p>
-     *     column id is '4', column name is 'ts', but 'PartitionField#name' is 'ts_day', 'PartitionField#fieldId'
-     *     is '1000', 'PartitionField#name' default is 'columnName_transformName', and we can customize this name.
-     *     So even for an Identity Transform, this name doesn't necessarily have to match the schema column name,
-     *     because we can customize this name. But in general, nobody customize an Identity Transform Partition name.
+     * column id is '4', column name is 'ts', but 'PartitionField#name' is 'ts_day', 'PartitionField#fieldId'
+     * is '1000', 'PartitionField#name' default is 'columnName_transformName', and we can customize this name.
+     * So even for an Identity Transform, this name doesn't necessarily have to match the schema column name,
+     * because we can customize this name. But in general, nobody customize an Identity Transform Partition name.
      * </p>
      * <p>
-     *     To obtain the table columns for Iceberg tables, we use 'org.apache.iceberg.Schema#findColumnName'.
+     * To obtain the table columns for Iceberg tables, we use 'org.apache.iceberg.Schema#findColumnName'.
      * </p>
-     *<br>
+     * <br>
      * refs:<br>
      * - https://iceberg.apache.org/spec/#partition-evolution<br>
      * - https://iceberg.apache.org/spec/#partition-specs<br>
@@ -416,10 +430,10 @@ public class IcebergTable extends Table {
                                     throw new SemanticException("Unsupported function call %s", expr.toString());
                                 }
                                 Function builtinFunction = Expr.getBuiltinFunction(
-                                        ((FunctionCallExpr) expr).getFnName().getFunction(), 
-                                                args, Function.CompareMode.IS_IDENTICAL);
+                                        ((FunctionCallExpr) expr).getFnName().getFunction(),
+                                        args, Function.CompareMode.IS_IDENTICAL);
                                 ((FunctionCallExpr) expr).setFn(builtinFunction);
-                                
+
                                 if (((FunctionCallExpr) expr).getFnName().getFunction().equals(
                                         FeConstants.ICEBERG_TRANSFORM_EXPRESSION_PREFIX + "truncate")) {
                                     ((FunctionCallExpr) expr).setType(column.getType());
@@ -442,7 +456,7 @@ public class IcebergTable extends Table {
                         .findColumnName(nativeTable.spec().fields().get(i).sourceId()));
                 partInfo.setPartition_column_name(nativeTable.spec().fields().get(i).name());
                 partInfo.setTransform_expr(nativeTable.spec().fields().get(i).transform().toString());
-                partInfo.setPartition_expr(partitionExprs.get(i).treeToThrift());
+                partInfo.setPartition_expr(ExprToThriftVisitor.treeToThrift(partitionExprs.get(i)));
                 partitionInfos.add(partInfo);
             }
             tIcebergTable.setPartition_info(partitionInfos);
@@ -456,7 +470,9 @@ public class IcebergTable extends Table {
                 long partitionId = info.getId();
                 THdfsPartition tPartition = new THdfsPartition();
                 List<LiteralExpr> keys = key.getKeys();
-                tPartition.setPartition_key_exprs(keys.stream().map(Expr::treeToThrift).collect(Collectors.toList()));
+                tPartition.setPartition_key_exprs(keys.stream()
+                        .map(ExprToThriftVisitor::treeToThrift)
+                        .collect(Collectors.toList()));
                 tPartitionMap.putToPartitions(partitionId, tPartition);
             }
 
@@ -538,6 +554,23 @@ public class IcebergTable extends Table {
         return Objects.equal(catalogName, otherTable.getCatalogName()) &&
                 Objects.equal(catalogDBName, otherTable.catalogDBName) &&
                 Objects.equal(tableIdentifier, otherTable.getTableIdentifier());
+    }
+
+    public IcebergTableProcedure getTableProcedure(String procedureName) {
+        IcebergTableOperation op = IcebergTableOperation.fromString(procedureName);
+        if (op == IcebergTableOperation.UNKNOWN) {
+            throw new StarRocksConnectorException("Unknown iceberg table operation : %s", procedureName);
+        }
+        return switch (op) {
+            case FAST_FORWARD -> FastForwardProcedure.getInstance();
+            case CHERRYPICK_SNAPSHOT -> CherryPickSnapshotProcedure.getInstance();
+            case EXPIRE_SNAPSHOTS -> ExpireSnapshotsProcedure.getInstance();
+            case REMOVE_ORPHAN_FILES -> RemoveOrphanFilesProcedure.getInstance();
+            case ROLLBACK_TO_SNAPSHOT -> RollbackToSnapshotProcedure.getInstance();
+            case REWRITE_DATA_FILES -> RewriteDataFilesProcedure.getInstance();
+            case ADD_FILES -> AddFilesProcedure.getInstance();
+            default -> throw new StarRocksConnectorException("Unsupported table operation %s", op);
+        };
     }
 
     public static Builder builder() {
